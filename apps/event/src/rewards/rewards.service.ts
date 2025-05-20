@@ -18,11 +18,15 @@ import { RequestRewardDto } from '../dto/request-reward.dto';
 import { ClaimRewardDto } from '../dto/claim-reward.dto';
 import { EventsService } from '../events/events.service';
 import { InngestClient } from '../inngest/inngest.client';
-import { PaginationDto, createPaginatedResponse, IdempotencyUtil } from '@app/common';
+import {
+  PaginationDto,
+  createPaginatedResponse,
+  PaginatedResponse,
+  IdempotencyUtil,
+} from '@app/common';
 
 /**
  * 보상 서비스
- * 보상 관련 비즈니스 로직을 처리합니다.
  */
 @Injectable()
 export class RewardsService {
@@ -39,10 +43,6 @@ export class RewardsService {
 
   /**
    * 보상 생성
-   *
-   * @param createRewardDto 보상 생성 DTO
-   * @param userId 생성자 ID
-   * @returns 생성된 보상
    */
   async create(createRewardDto: CreateRewardDto, userId: string): Promise<RewardDocument> {
     this.logger.log(`Creating reward: ${createRewardDto.name} by user ${userId}`);
@@ -60,26 +60,27 @@ export class RewardsService {
 
   /**
    * 모든 보상 조회 (페이지네이션)
-   *
-   * @param paginationDto 페이지네이션 DTO
-   * @returns 페이지네이션된 보상 목록
    */
-  async findAll(paginationDto: PaginationDto) {
-    const { page, limit, skip } = paginationDto;
+  async findAll(paginationDto: PaginationDto): Promise<PaginatedResponse<RewardDocument>> {
+    const page = paginationDto?.page || 1;
+    const limit = paginationDto?.limit || 10;
+    const skip = (page - 1) * limit;
 
-    const [rewards, total] = await Promise.all([
-      this.rewardModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
-      this.rewardModel.countDocuments().exec(),
-    ]);
+    try {
+      const [rewards, total] = await Promise.all([
+        this.rewardModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+        this.rewardModel.countDocuments().exec(),
+      ]);
 
-    return createPaginatedResponse(rewards, total, page, limit);
+      return createPaginatedResponse(rewards, total, page, limit);
+    } catch (error) {
+      this.logger.error(`Error finding all rewards: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
    * 이벤트별 보상 조회
-   *
-   * @param eventId 이벤트 ID
-   * @returns 보상 목록
    */
   async findByEventId(eventId: string): Promise<RewardDocument[]> {
     return this.rewardModel.find({ eventId }).exec();
@@ -87,9 +88,6 @@ export class RewardsService {
 
   /**
    * ID로 보상 조회
-   *
-   * @param id 보상 ID
-   * @returns 조회된 보상
    */
   async findById(id: string): Promise<RewardDocument> {
     const isValidId = Types.ObjectId.isValid(id);
@@ -109,10 +107,6 @@ export class RewardsService {
 
   /**
    * 보상 요청
-   *
-   * @param requestRewardDto 보상 요청 DTO
-   * @param userId 사용자 ID
-   * @returns 보상 요청 정보
    */
   async requestReward(
     requestRewardDto: RequestRewardDto,
@@ -123,7 +117,6 @@ export class RewardsService {
     const { eventId, rewardId, idempotencyKey } = requestRewardDto;
 
     // 이벤트 및 보상 존재 여부 확인
-    // const event = await this.eventsService.findById(eventId);
     const reward = await this.findById(rewardId);
 
     // 보상이 해당 이벤트에 속하는지 확인
@@ -175,9 +168,6 @@ export class RewardsService {
 
   /**
    * 보상 요청 상태 조회
-   *
-   * @param requestId 요청 ID
-   * @returns 보상 요청 정보
    */
   async getRequestStatus(requestId: string): Promise<RewardRequestDocument> {
     const isValidId = Types.ObjectId.isValid(requestId);
@@ -197,34 +187,37 @@ export class RewardsService {
 
   /**
    * 사용자별 보상 요청 조회 (페이지네이션)
-   *
-   * @param userId 사용자 ID
-   * @param paginationDto 페이지네이션 DTO
-   * @returns 페이지네이션된 보상 요청 목록
    */
-  async getUserRequests(userId: string, paginationDto: PaginationDto) {
-    const { page, limit, skip } = paginationDto;
+  async getUserRequests(
+    userId: string,
+    paginationDto: PaginationDto,
+  ): Promise<PaginatedResponse<RewardRequestDocument>> {
+    const page = paginationDto?.page || 1;
+    const limit = paginationDto?.limit || 10;
+    const skip = (page - 1) * limit;
 
-    const [requests, total] = await Promise.all([
-      this.rewardRequestModel
-        .find({ userId })
-        .populate('eventId')
-        .populate('rewardId')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.rewardRequestModel.countDocuments({ userId }).exec(),
-    ]);
+    try {
+      const [requests, total] = await Promise.all([
+        this.rewardRequestModel
+          .find({ userId })
+          .populate('eventId')
+          .populate('rewardId')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .exec(),
+        this.rewardRequestModel.countDocuments({ userId }).exec(),
+      ]);
 
-    return createPaginatedResponse(requests, total, page, limit);
+      return createPaginatedResponse(requests, total, page, limit);
+    } catch (error) {
+      this.logger.error(`Error getting user requests: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
    * 사용자별 대기 중인 보상 요청 조회
-   *
-   * @param userId 사용자 ID
-   * @returns 대기 중인 보상 요청 목록
    */
   async getPendingRewards(userId: string): Promise<RewardRequestDocument[]> {
     return this.rewardRequestModel
@@ -241,12 +234,6 @@ export class RewardsService {
 
   /**
    * 보상 요청 상태 업데이트
-   *
-   * @param requestId 요청 ID
-   * @param status 새 상태
-   * @param message 상태 변경 메시지
-   * @param session MongoDB 세션 (트랜잭션)
-   * @returns 업데이트된 보상 요청
    */
   async updateRequestStatus(
     requestId: string,
@@ -285,11 +272,6 @@ export class RewardsService {
 
   /**
    * 보상 지급 완료 처리
-   *
-   * @param requestId 요청 ID
-   * @param claimRewardDto 보상 지급 완료 DTO
-   * @param userId 처리자 ID
-   * @returns 업데이트된 보상 요청
    */
   async claimReward(
     requestId: string,
@@ -340,12 +322,6 @@ export class RewardsService {
 
   /**
    * 관리자용 보상 요청 상태 업데이트
-   *
-   * @param requestId 요청 ID
-   * @param status 새 상태
-   * @param message 상태 변경 메시지
-   * @param userId 처리자 ID
-   * @returns 업데이트된 보상 요청
    */
   async adminUpdateRequestStatus(
     requestId: string,
@@ -385,28 +361,34 @@ export class RewardsService {
 
   /**
    * 모든 보상 요청 조회 (페이지네이션, 관리자용)
-   *
-   * @param paginationDto 페이지네이션 DTO
-   * @param status 상태 필터 (옵션)
-   * @returns 페이지네이션된 보상 요청 목록
    */
-  async getAllRequests(paginationDto: PaginationDto, status?: RewardRequestStatus) {
-    const { page, limit, skip } = paginationDto;
+  async getAllRequests(
+    paginationDto: PaginationDto,
+    status?: RewardRequestStatus,
+  ): Promise<PaginatedResponse<RewardRequestDocument>> {
+    const page = paginationDto?.page || 1;
+    const limit = paginationDto?.limit || 10;
+    const skip = (page - 1) * limit;
 
     const query = status ? { status } : {};
 
-    const [requests, total] = await Promise.all([
-      this.rewardRequestModel
-        .find(query)
-        .populate('eventId')
-        .populate('rewardId')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.rewardRequestModel.countDocuments(query).exec(),
-    ]);
+    try {
+      const [requests, total] = await Promise.all([
+        this.rewardRequestModel
+          .find(query)
+          .populate('eventId')
+          .populate('rewardId')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .exec(),
+        this.rewardRequestModel.countDocuments(query).exec(),
+      ]);
 
-    return createPaginatedResponse(requests, total, page, limit);
+      return createPaginatedResponse(requests, total, page, limit);
+    } catch (error) {
+      this.logger.error(`Error getting all requests: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 }

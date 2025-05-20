@@ -1,9 +1,12 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
+import { PassportModule } from '@nestjs/passport';
+import { JwtModule } from '@nestjs/jwt';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { JwtStrategy } from './strategies/jwt.strategy';
 import { EventModule } from './event/event.module';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from '@app/common';
@@ -20,6 +23,17 @@ import configuration, { validationSchema } from './config/configuration';
       isGlobal: true,
       load: [configuration],
       validationSchema,
+    }),
+
+    // JWT 모듈
+    PassportModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('jwt.secret'),
+        signOptions: { expiresIn: configService.get<string>('jwt.expiresIn') },
+      }),
     }),
 
     // 마이크로서비스 클라이언트 등록
@@ -56,6 +70,7 @@ import configuration, { validationSchema } from './config/configuration';
     EventModule,
   ],
   providers: [
+    JwtStrategy,
     // 전역 가드 등록
     {
       provide: APP_GUARD,

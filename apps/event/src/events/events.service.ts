@@ -3,13 +3,12 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Event, EventDocument, EventStatus } from '../schemas/event.schema';
 import { CreateEventDto } from '../dto/create-event.dto';
-import { PaginationDto, createPaginatedResponse } from '@app/common';
+import { PaginationDto, createPaginatedResponse, PaginatedResponse } from '@app/common';
 import { EventLoggerService } from '../event-logger/event-logger.service';
 import { EventType } from '@app/common';
 
 /**
  * 이벤트 서비스
- * 이벤트 관련 비즈니스 로직을 처리합니다.
  */
 @Injectable()
 export class EventsService {
@@ -22,10 +21,6 @@ export class EventsService {
 
   /**
    * 이벤트 생성
-   *
-   * @param createEventDto 이벤트 생성 DTO
-   * @param userId 생성자 ID
-   * @returns 생성된 이벤트
    */
   async create(createEventDto: CreateEventDto, userId: string): Promise<EventDocument> {
     this.logger.log(`Creating event: ${createEventDto.name} by user ${userId}`);
@@ -40,29 +35,36 @@ export class EventsService {
 
   /**
    * 모든 이벤트 조회 (페이지네이션)
-   *
-   * @param paginationDto 페이지네이션 DTO
-   * @returns 페이지네이션된 이벤트 목록
    */
-  async findAll(paginationDto: PaginationDto) {
-    const { page, limit, skip } = paginationDto;
+  async findAll(paginationDto: PaginationDto): Promise<PaginatedResponse<EventDocument>> {
+    // Provide default values if not provided
+    const page = paginationDto?.page || 1;
+    const limit = paginationDto?.limit || 10;
+    const skip = (page - 1) * limit;
 
-    const [events, total] = await Promise.all([
-      this.eventModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
-      this.eventModel.countDocuments().exec(),
-    ]);
+    this.logger.log(`Finding all events with page: ${page}, limit: ${limit}, skip: ${skip}`);
 
-    return createPaginatedResponse(events, total, page, limit);
+    try {
+      const [events, total] = await Promise.all([
+        this.eventModel.find().sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+        this.eventModel.countDocuments().exec(),
+      ]);
+
+      this.logger.log(`Found ${events.length} events out of ${total} total`);
+      return createPaginatedResponse(events, total, page, limit);
+    } catch (error) {
+      this.logger.error(`Error finding all events: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
    * 활성 이벤트 조회 (페이지네이션)
-   *
-   * @param paginationDto 페이지네이션 DTO
-   * @returns 페이지네이션된 활성 이벤트 목록
    */
-  async findActive(paginationDto: PaginationDto) {
-    const { page, limit, skip } = paginationDto;
+  async findActive(paginationDto: PaginationDto): Promise<PaginatedResponse<EventDocument>> {
+    const page = paginationDto?.page || 1;
+    const limit = paginationDto?.limit || 10;
+    const skip = (page - 1) * limit;
     const now = new Date();
 
     const query = {
@@ -71,19 +73,24 @@ export class EventsService {
       endDate: { $gte: now },
     };
 
-    const [events, total] = await Promise.all([
-      this.eventModel.find(query).sort({ endDate: 1 }).skip(skip).limit(limit).exec(),
-      this.eventModel.countDocuments(query).exec(),
-    ]);
+    this.logger.log(`Finding active events with query: ${JSON.stringify(query)}`);
 
-    return createPaginatedResponse(events, total, page, limit);
+    try {
+      const [events, total] = await Promise.all([
+        this.eventModel.find(query).sort({ endDate: 1 }).skip(skip).limit(limit).exec(),
+        this.eventModel.countDocuments(query).exec(),
+      ]);
+
+      this.logger.log(`Found ${events.length} active events out of ${total} total`);
+      return createPaginatedResponse(events, total, page, limit);
+    } catch (error) {
+      this.logger.error(`Error finding active events: ${error.message}`, error.stack);
+      throw error;
+    }
   }
 
   /**
    * ID로 이벤트 조회
-   *
-   * @param id 이벤트 ID
-   * @returns 조회된 이벤트
    */
   async findById(id: string): Promise<EventDocument> {
     const isValidId = Types.ObjectId.isValid(id);
@@ -103,9 +110,6 @@ export class EventsService {
 
   /**
    * 이벤트 유형으로 이벤트 조회
-   *
-   * @param eventType 이벤트 유형
-   * @returns 조회된 이벤트 목록
    */
   async findByEventType(eventType: EventType): Promise<EventDocument[]> {
     const now = new Date();
@@ -122,11 +126,6 @@ export class EventsService {
 
   /**
    * 이벤트 상태 업데이트
-   *
-   * @param id 이벤트 ID
-   * @param status 새 상태
-   * @param userId 수정자 ID
-   * @returns 업데이트된 이벤트
    */
   async updateStatus(id: string, status: EventStatus, userId: string): Promise<EventDocument> {
     const event = await this.findById(id);
@@ -139,10 +138,6 @@ export class EventsService {
 
   /**
    * 이벤트 조건 충족 여부 확인
-   *
-   * @param userId 사용자 ID
-   * @param event 이벤트 정보
-   * @returns 조건 충족 여부
    */
   async checkEventCondition(userId: string, event: EventDocument): Promise<boolean> {
     this.logger.log(`Checking event condition for user ${userId}, event: ${event.name}`);
@@ -173,10 +168,6 @@ export class EventsService {
 
   /**
    * 일일 로그인 조건 확인
-   *
-   * @param userId 사용자 ID
-   * @param condition 조건 객체
-   * @returns 조건 충족 여부
    */
   private async checkDailyLoginCondition(userId: string, condition: any): Promise<boolean> {
     const consecutiveDays = await this.eventLoggerService.calculateConsecutiveEvents(
@@ -189,10 +180,6 @@ export class EventsService {
 
   /**
    * 친구 초대 조건 확인
-   *
-   * @param userId 사용자 ID
-   * @param condition 조건 객체
-   * @returns 조건 충족 여부
    */
   private async checkInviteFriendsCondition(userId: string, condition: any): Promise<boolean> {
     const logs = await this.eventLoggerService.getUserEventLogs(userId, EventType.INVITE_FRIENDS);
@@ -204,10 +191,6 @@ export class EventsService {
 
   /**
    * 퀘스트 완료 조건 확인
-   *
-   * @param userId 사용자 ID
-   * @param condition 조건 객체
-   * @returns 조건 충족 여부
    */
   private async checkQuestCompleteCondition(userId: string, condition: any): Promise<boolean> {
     const logs = await this.eventLoggerService.getUserEventLogs(userId, EventType.QUEST_COMPLETE);
@@ -217,10 +200,6 @@ export class EventsService {
 
   /**
    * 레벨업 조건 확인
-   *
-   * @param userId 사용자 ID
-   * @param condition 조건 객체
-   * @returns 조건 충족 여부
    */
   private async checkLevelUpCondition(userId: string, condition: any): Promise<boolean> {
     const logs = await this.eventLoggerService.getUserEventLogs(userId, EventType.LEVEL_UP);
@@ -237,10 +216,6 @@ export class EventsService {
 
   /**
    * 프로필 완성 조건 확인
-   *
-   * @param userId 사용자 ID
-   * @param condition 조건 객체
-   * @returns 조건 충족 여부
    */
   private async checkProfileCompleteCondition(userId: string, condition: any): Promise<boolean> {
     const logs = await this.eventLoggerService.getUserEventLogs(userId, EventType.PROFILE_COMPLETE);

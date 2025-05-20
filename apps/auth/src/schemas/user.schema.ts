@@ -3,14 +3,8 @@ import { Document } from 'mongoose';
 import { ApiProperty } from '@nestjs/swagger';
 import { Role } from '@app/common';
 
-/**
- * 사용자 문서 타입
- */
 export type UserDocument = User & Document;
 
-/**
- * 사용자 스키마
- */
 @Schema({
   timestamps: true,
   collection: 'users',
@@ -29,13 +23,10 @@ export class User {
   password: string;
 
   @ApiProperty({ enum: Role, isArray: true, description: '역할' })
-  @Prop({ type: [String], enum: Object.values(Role), default: [Role.USER] })
+  @Prop({ type: [String], enum: Role, default: [Role.USER] })
   roles: Role[];
 }
 
-/**
- * 사용자 스키마 팩토리
- */
 export const UserSchema = SchemaFactory.createForClass(User);
 
 // 인덱스 추가

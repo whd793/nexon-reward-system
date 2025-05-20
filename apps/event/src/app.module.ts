@@ -44,7 +44,6 @@ import configuration, { validationSchema } from './config/configuration';
     EventLoggerModule,
     InngestModule,
   ],
-  controllers: [],
   providers: [
     {
       provide: APP_FILTER,

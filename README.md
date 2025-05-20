@@ -41,11 +41,6 @@ MSA (Microservices Architecture) 기반의 이벤트/보상 관리 시스템입�
 
 1. 저장소를 클론합니다:
 
-```bash
-git clone https://github.com/yourusername/nexon-reward-system.git
-cd nexon-reward-system
-```
-
 # 실행 및 개발 가이드
 
 Docker Compose로 서비스를 시작합니다:
@@ -62,6 +57,131 @@ docker-compose up -d
 http://localhost:3000/api/docs
 ```
 
+## api
+
+**Event Management:**
+
+- - `POST /api/events` - Create event (Admin/Operator)
+- - `GET /api/events` - Get all events (Admin/Operator/Auditor)
+- - `GET /api/events/active` - Get active events (Public)
+- - `GET /api/events/:id` - Get event by ID
+- - `PATCH /api/events/:id/status` - Update event status
+- - `POST /api/events/:eventId/check-condition` - Check event condition
+
+**Reward Management:**
+
+- - `POST /api/events/rewards` - Create reward
+- - `GET /api/events/rewards` - Get all rewards???
+- - `GET /api/events/:id/rewards` - Get rewards by event
+- - `GET /api/events/rewards/:rewardId` - Get reward by ID
+- - `POST /api/events/rewards/request` - Request reward
+- - `GET /api/events/rewards/request/:requestId` - Get request status
+- - `GET /api/events/rewards/user/requests` - Get user requests
+- - `GET /api/events/rewards/user/pending` - Get user pending rewards
+- - `POST /api/events/rewards/claim/:requestId` - Claim reward
+
+**Admin Management:**
+
+- - `GET /api/events/rewards/admin/requests` - Get all requests
+- - `PATCH /api/events/rewards/admin/request/:requestId` - Update request status
+
+**Analytics & Logging:**
+
+- - `POST /api/events/log` - Create event log
+- - `GET /api/events/statistics/events` - Event statistics
+- - `GET /api/events/statistics/rewards` - Reward statistics
+
+**Authentication:**
+
+- - `POST /api/auth/login` - Login
+- - `POST /api/auth/register` - Register
+- - `GET /api/auth/me` - Get current user
+
+## API 테스트 방법
+
+### 1\. **Authentication**
+
+bash
+
+```bash
+# Register new user
+curl -X POST "http://localhost:3000/api/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "testuser", "email": "test@example.com", "password": "password123"}'
+
+# Login
+curl -X POST "http://localhost:3000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}'
+```
+
+### 2\. **Events API**
+
+bash
+
+```bash
+# Get JWT token first
+TOKEN=$(curl -s -X POST "http://localhost:3000/api/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}' | jq -r .access_token)
+
+# Get all events (admin only)
+curl -X GET "http://localhost:3000/api/events" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get active events (no auth required)
+curl -X GET "http://localhost:3000/api/events/active"
+
+# Get specific event
+curl -X GET "http://localhost:3000/api/events/682ed0a8f5e1c7fc9a524574" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Create new event
+curl -X POST "http://localhost:3000/api/events" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "New Test Event",
+    "description": "Test event description",
+    "eventType": "DAILY_LOGIN",
+    "condition": {"consecutiveDays": 3},
+    "startDate": "2025-05-22T00:00:00.000Z",
+    "endDate": "2025-06-22T23:59:59.999Z"
+  }'
+```
+
+### 3\. **Rewards API**
+
+bash
+
+```bash
+# Get rewards for an event
+curl -X GET "http://localhost:3000/api/events/682ed0a8f5e1c7fc9a524574/rewards" \
+  -H "Authorization: Bearer $TOKEN"
+
+# Create a reward
+curl -X POST "http://localhost:3000/api/events/rewards" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Gold Coins",
+    "description": "500 gold coins reward",
+    "type": "CURRENCY",
+    "value": 500,
+    "quantity": 1,
+    "eventId": "682ed0a8f5e1c7fc9a524574"
+  }'
+
+# Request a reward
+curl -X POST "http://localhost:3000/api/events/rewards/request" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "eventId": "682ed0a8f5e1c7fc9a524574",
+    "rewardId": "REWARD_ID_HERE"
+  }'
+```
+
 ## 기본 계정
 
 테스트에 사용할 수 있는 기본 계정:
@@ -70,29 +190,6 @@ http://localhost:3000/api/docs
 - 운영자: operator / operator123
 - 감사자: auditor / auditor123
 - 일반 사용자: user / user123
-
-## 로컬 개발 환경 설정
-
-1. 저장소를 클론합니다:
-
-```bash
-git clone https://github.com/yourusername/nexon-reward-system.git
-cd nexon-reward-system
-```
-
-2. 의존성을 설치합니다:
-
-```bash
-npm install
-```
-
-3. `.env` 파일을 수정하여 로컬 환경 설정을 구성합니다.
-
-4. MongoDB를 시작합니다(Docker 사용):
-
-```bash
-docker-compose up -d mongodb
-```
 
 ## API 문서
 

@@ -1,100 +1,77 @@
-// apps/auth/src/auth/auth.controller.ts
-import { Controller, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Request, UseGuards } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from '../dto/create-user.dto';
 import { LoginUserDto } from '../dto/login-user.dto';
-import { UsersService } from '../users/users.service';
+import { LocalAuthGuard } from '../guards/local-auth.guard';
 
 /**
- * 인증 마이크로서비스 컨트롤러
+ * 인증 컨트롤러
  */
 @ApiTags('auth')
-@Controller()
+@Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(
-    private readonly authService: AuthService,
-    private readonly usersService: UsersService, // Make sure this is injected
-  ) {}
+  constructor(private readonly authService: AuthService) {}
 
   /**
-   * 로그인 (마이크로서비스 내부 통신용)
+   * 회원가입
    */
-  @MessagePattern('auth.login')
-  async login(@Payload() loginUserDto: LoginUserDto) {
-    this.logger.log(`[Microservice] Login attempt for user: ${loginUserDto.username}`);
-
-    try {
-      // First validate the user
-      const user = await this.authService.validateUser(
-        loginUserDto.username,
-        loginUserDto.password,
-      );
-
-      // If validation fails, return an error
-      if (!user) {
-        this.logger.warn(`[Microservice] Invalid credentials for user: ${loginUserDto.username}`);
-        return { error: true, message: '아이디 또는 비밀번호가 올바르지 않습니다.' };
-      }
-
-      // If validation passes, generate token with the validated user
-      return this.authService.login(user);
-    } catch (error) {
-      this.logger.error(`[Microservice] Login error: ${error.message}`, error.stack);
-      return { error: true, message: error.message };
-    }
+  @Post('register')
+  @ApiOperation({ summary: '회원가입' })
+  @ApiResponse({ status: 201, description: '회원가입 성공' })
+  @ApiResponse({ status: 400, description: '잘못된 입력' })
+  @ApiResponse({ status: 409, description: '중복된 사용자명 또는 이메일' })
+  async register(@Body() createUserDto: CreateUserDto) {
+    this.logger.log(`Registration attempt for user: ${createUserDto.username}`);
+    return this.authService.register(createUserDto);
   }
 
   /**
-   * 회원가입 (마이크로서비스 내부 통신용)
+   * 로그인
+   */
+  @UseGuards(LocalAuthGuard)
+  @Post('login')
+  @ApiOperation({ summary: '로그인' })
+  @ApiResponse({ status: 200, description: '로그인 성공' })
+  @ApiResponse({ status: 401, description: '인증 실패' })
+  async login(@Request() req) {
+    this.logger.log(`Login success for user: ${req.user.username}`);
+    return this.authService.login(req.user);
+  }
+
+  // ================ MICROSERVICE MESSAGE PATTERNS ================
+
+  /**
+   * 회원가입 (마이크로서비스 패턴)
    */
   @MessagePattern('auth.register')
-  async register(@Payload() createUserDto: CreateUserDto) {
+  async registerUser(@Payload() createUserDto: CreateUserDto) {
     this.logger.log(`[Microservice] Registration attempt for user: ${createUserDto.username}`);
-    try {
-      return this.authService.register(createUserDto);
-    } catch (error) {
-      this.logger.error(`[Microservice] Registration error: ${error.message}`, error.stack);
-      return { error: true, message: error.message };
-    }
+    return this.authService.register(createUserDto);
   }
 
   /**
-   * 토큰 검증 (마이크로서비스 내부 통신용)
+   * 로그인 (마이크로서비스 패턴)
    */
-  @MessagePattern('auth.validateToken')
-  async validateToken(@Payload() token: string) {
-    this.logger.log('[Microservice] Token validation request');
-    try {
-      return this.authService.validateToken(token);
-    } catch (error) {
-      this.logger.error(`[Microservice] Token validation error: ${error.message}`, error.stack);
-      return { error: true, message: '유효하지 않은 토큰입니다.' };
+  @MessagePattern('auth.login')
+  async loginUser(@Payload() loginUserDto: LoginUserDto) {
+    this.logger.log(`[Microservice] Login attempt for user: ${loginUserDto.username}`);
+    const user = await this.authService.validateUser(loginUserDto.username, loginUserDto.password);
+    if (!user) {
+      throw new Error('Invalid credentials');
     }
+    return this.authService.login(user);
   }
 
   /**
-   * 사용자 ID로 사용자 조회 (마이크로서비스 내부 통신용)
+   * 사용자 조회 (마이크로서비스 패턴)
    */
   @MessagePattern('user.findById')
-  async findById(@Payload() userId: string) {
+  async findUserById(@Payload() userId: string) {
     this.logger.log(`[Microservice] Finding user by ID: ${userId}`);
-    try {
-      const user = await this.usersService.findById(userId);
-      if (!user) {
-        return { error: true, message: '사용자를 찾을 수 없습니다.' };
-      }
-
-      // Remove password before returning
-      const result = user.toObject();
-      delete result.password;
-      return result;
-    } catch (error) {
-      this.logger.error(`[Microservice] Find user error: ${error.message}`, error.stack);
-      return { error: true, message: error.message };
-    }
+    return this.authService.findById(userId);
   }
 }
